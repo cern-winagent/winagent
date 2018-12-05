@@ -3,13 +3,13 @@
     "Updates": {
       /*
       "RabbitMQ": {
-        "options": [ "epuentes-rabbitmq", "test", "test" ],
+        "args": [ "epuentes-rabbitmq", "test", "test" ],
         "seconds": 0,
         "minutes": 0,
         "hours": 0
       },*/
       "Console": {
-        "options": [ "table" ],
+        "args": [ "table" ],
         "seconds": 0,
         "minutes": 0,
         "hours": 0
@@ -19,7 +19,7 @@
     "HeartBeat": {
 
       "RabbitMQ": {
-        "options": [ "epuentes-rabbitmq", "test", "test" ],
+        "args": [ "epuentes-rabbitmq", "test", "test" ],
         "seconds": 0,
         "minutes": 0,
         "hours": 0

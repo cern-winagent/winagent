@@ -1,4 +1,5 @@
-﻿using plugin;
+﻿using System;
+using plugin;
 
 namespace winagent
 {
