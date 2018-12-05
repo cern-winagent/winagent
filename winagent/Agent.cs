@@ -5,8 +5,6 @@ using System.Linq;
 using Newtonsoft.Json.Linq;
 using System.IO;
 using System.Threading;
-using CommandLine;
-using System.ServiceProcess;
 
 using plugin;
 
@@ -16,92 +14,50 @@ namespace winagent
     {
         static JObject config;
 
-        #region Nested classes to support running as service
-        public class Service : ServiceBase
+        static void Main(string[] args)
         {
-            // Thread control
-            private ManualResetEvent _shutdownEvent = new ManualResetEvent(false);
-            private Thread _thread;
+            Assembly consoleAssembly = Assembly.GetExecutingAssembly();
+            List<PluginDefinition> pluginList = LoadAllClassesImplementingSpecificAttribute<PluginAttribute>(consoleAssembly);
 
-            public Service()
+            // Console.WriteLine("Available Plugins:");
+            // pluginList.ForEach(t => Console.WriteLine(((PluginAttribute)t.Attribute).PluginName));
+
+            if (args[0] == "service")
             {
-                ServiceName = "Winagent";
+                //TODO: Change absolute path
+                config = JObject.Parse(File.ReadAllText(@"C:\Users\epuentes\Projects\nframework\winagent\winagent\config.json"));
+                ExecuteService(pluginList);
+            }
+            else
+            {
+                ExecutePlugin(pluginList, "Updates", "Console", args);
             }
 
-            protected override void OnStart(string[] args)
-            {
-                _thread = new Thread(Excecution);
-                _thread.Name = "Winagent thread";
-                _thread.IsBackground = true;
-                _thread.Start();
-            }
-
-            protected override void OnStop()
-            {
-                // Set flag to finalize thread
-                _shutdownEvent.Set();
-
-                // Give the thread 3 seconds to stop
-                if (!_thread.Join(3000))
-                { 
-                    _thread.Abort();
-                }
-            }
-
-            private void Excecution()
-            {
-                // Checks if the thread should continue
-                while (!_shutdownEvent.WaitOne(0))
-                {
-                    ExecuteService();
-                }
-            }
-        }
-        #endregion
-
-        // Load plugin assemblies
-        public static List<PluginDefinition> LoadPlugins()
-        {
-            List<PluginDefinition> pluginList = new List<PluginDefinition>();
-
-            foreach (String path in Directory.GetFiles("plugins"))
-            {
-                Assembly plugin = Assembly.LoadFrom(path);
-                pluginList.AddRange(LoadAllClassesImplementingSpecificAttribute<PluginAttribute>(plugin));
-            }
-
-            return pluginList;
+            // Prevents the test console from closing itself
+            Console.ReadKey();
         }
 
         // Executes the windows service 
-        public static void ExecuteService()
+        public static void ExecuteService(List<PluginDefinition> plugins)
         {
-            // Set current directory as base directory
-            Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-
-            // Load plugins after parse options
-            List<PluginDefinition> pluginList = Agent.LoadPlugins();
-
-            // Read config file
-            config = JObject.Parse(File.ReadAllText(@"config.json"));
-
             foreach (JProperty input in ((JObject) config["input"]).Properties())
             {
-                PluginDefinition inputPluginMetadata = pluginList.Where(t => ((PluginAttribute)t.Attribute).PluginName.ToLower() == input.Name.ToLower()).First();
+                PluginDefinition inputPluginMetadata = plugins.Where(t => ((PluginAttribute)t.Attribute).PluginName == input.Name).First();
                 IInputPlugin inputPlugin = Activator.CreateInstance(inputPluginMetadata.ImplementationType) as IInputPlugin;
 
                 foreach (JProperty output in ((JObject)input.Value).Properties())
                 {
-                    PluginDefinition outputPluginMetadata = pluginList.Where(t => ((PluginAttribute)t.Attribute).PluginName.ToLower() == output.Name.ToLower()).First();
+                    PluginDefinition outputPluginMetadata = plugins.Where(t => ((PluginAttribute)t.Attribute).PluginName == output.Name).First();
                     IOutputPlugin outputPlugin = Activator.CreateInstance(outputPluginMetadata.ImplementationType) as IOutputPlugin;
 
-                    TaskObject task = new TaskObject(inputPlugin, outputPlugin, output.Value["options"].ToObject<string[]>());
+                    TaskObject task = new TaskObject(inputPlugin, outputPlugin, output.Value["args"].ToObject<string[]>());
                     
                     Timer testimer = new Timer(ExecuteTask, task, 1000, CalculateTime());
                     
-                    outputPlugin.Execute(inputPlugin.Execute(), output.Value["options"].ToObject<string[]>());
+                    outputPlugin.Execute(inputPlugin.Execute(), output.Value["args"].ToObject<string[]>());
                 }
             }
+                            
         }
 
         // Executes a task
@@ -119,30 +75,15 @@ namespace winagent
 
 
         // Selects the specified plugin and executes it   
-        public static void ExecuteCommand(String[] inputs, String[] outputs, String[] options)
+        public static void ExecutePlugin(List<PluginDefinition> plugins, string input, string output, string[] options)
         {
-            // Set current directory as base directory
-            Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
+            PluginDefinition inputPluginMetadata = plugins.Where(t => ((PluginAttribute)t.Attribute).PluginName == input).First();
+            PluginDefinition outputPluginMetadata = plugins.Where(t => ((PluginAttribute)t.Attribute).PluginName == output).First();
 
-            // Load plugins after parse options
-            List<PluginDefinition> pluginList = Agent.LoadPlugins();
-
-            foreach (String input in inputs)
-            {
-                PluginDefinition inputPluginMetadata = pluginList.Where(t => ((PluginAttribute)t.Attribute).PluginName.ToLower() == input.ToLower()).First();
-                IInputPlugin inputPlugin = Activator.CreateInstance(inputPluginMetadata.ImplementationType) as IInputPlugin;
-                string inputResult = inputPlugin.Execute();
-
-                foreach (String output in outputs)
-                {
-                    PluginDefinition outputPluginMetadata = pluginList.Where(t => ((PluginAttribute)t.Attribute).PluginName.ToLower() == output.ToLower()).First();
-
-                    IOutputPlugin outputPlugin = Activator.CreateInstance(outputPluginMetadata.ImplementationType) as IOutputPlugin;
+            IInputPlugin inputPlugin = Activator.CreateInstance(inputPluginMetadata.ImplementationType) as IInputPlugin;
+            IOutputPlugin outputPlugin = Activator.CreateInstance(outputPluginMetadata.ImplementationType) as IOutputPlugin;
             
-                    outputPlugin.Execute(inputResult, options);
-                }
-            }
-
+            outputPlugin.Execute(inputPlugin.Execute(), options);
         }
 
 
